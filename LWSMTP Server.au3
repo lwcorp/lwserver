@@ -88,12 +88,12 @@ While 1
 		Case $hClearButton
             GUICtrlSetData($hEdit, "")
         Case $hSave
-			local $extension = StringSplit(GUICtrlRead($hFile), ".")
-			$extension = $extension[UBound($extension)-1]
-			local $filesave = FileSaveDialog("Save As", @WorkingDir, "All (*.*)|(*." & $extension & ")", 16, GUICtrlRead($hFile), $MainWindow)
-			if not @error then
-				FileWrite(fileopen(GUICtrlRead($hFile), 2), GUICtrlRead($hHidden))
-			EndIf
+		local $extension = StringSplit(GUICtrlRead($hFile), ".")
+		$extension = $extension[UBound($extension)-1]
+		local $filesave = FileSaveDialog("Save As", @WorkingDir, "All (*.*)|(*." & $extension & ")", 16, GUICtrlRead($hFile), $MainWindow)
+		if not @error then
+			FileWrite(fileopen(GUICtrlRead($hFile), 2), GUICtrlRead($hHidden))
+		EndIf
 		Case $helpitem_about
 			about()
     EndSwitch
