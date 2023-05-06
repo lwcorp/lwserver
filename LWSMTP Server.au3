@@ -5,7 +5,7 @@
 #Au3Stripper_Parameters=/PreExpand /StripOnly /RM ;/RenameMinimum
 #AutoIt3Wrapper_Compile_both=y
 #AutoIt3Wrapper_Res_Description=LWSMTP Server Emulator
-#AutoIt3Wrapper_Res_Fileversion=0.1
+#AutoIt3Wrapper_Res_Fileversion=0.2
 #AutoIt3Wrapper_Res_LegalCopyright=Copyright (C) https://lior.weissbrod.com
 
 #cs
@@ -30,87 +30,109 @@ In accordance with item 7b), it is required to preserve the reasonable legal not
 In accordance with item 7c), misrepresentation of the origin of the material must be marked in reasonable ways as different from the original version.
 #ce
 
+#include-once
 #include <GUIConstantsEx.au3>
 #include <WindowsConstants.au3>
 #include <EditConstants.au3>
+#include <Constants.au3>
 
-$programname="LWSMTP Server Emulator"
-$programdesc = "An emulator which shows any outgoing SMTP message your local mail clients try to send"
-$version="0.1"
-$thedate="2023"
+global $simulator_programname="LWSMTP Server Emulator"
+global $simulator_programdesc = "An emulator which shows any outgoing SMTP message your local mail clients try to send"
+global $simulator_version="0.2"
+global $simulator_thedate="2023"
+
+if StringRegExp(@ScriptName, "^LWSMTP Server.*[_\.]") then
+	simulator()
+EndIf
+
+Func simulator($mainwin = Null, $margin_left=default, $margin_top=default)
 
 TCPStartup()
 ;AutoItSetOption("TCPTimeout", 100)
 
-Global $iIP = "127.0.0.1"
-Global $iPort = 25
-Global $iListenSocket = TCPListen($iIP, $iPort)
-$limit = '1mb'
-$filename = "message.eml"
-OnAutoItExitRegister("_OnExit")
-AdlibRegister("_Listen", 1000)
+local $iIP = "127.0.0.1"
+local $iPort = 25
+global $simulator_iListenSocket = TCPListen($iIP, $iPort)
+global $simulator_thelimit = '1mb'
+local $filename = "message.eml"
+OnAutoItExitRegister("_simulator_OnExit")
+AdlibRegister("_simulator_Listen", 10000)
 
-If $iListenSocket = -1 Then
+If $simulator_iListenSocket = -1 Then
     MsgBox(262144, "", "Error listening on port " & $iPort)
     Exit
 EndIf
 
-$limit = SizeToBytes($limit)
+$simulator_thelimit = simulator_SizeToBytes($simulator_thelimit)
 
-Global $MainWindow = GUICreate($programname, 400, 320)
-$helpmenu = GUICtrlCreateMenu("&Help")
-$helpitem_about = GUICtrlCreateMenuItem("&About", $helpmenu)
+global $simulator_MainWindow
+local $self = IsKeyword($mainwin) = $KEYWORD_NULL
+
+if $self then
+	$simulator_MainWindow = GUICreate($simulator_programname, 400, 320)
+else
+	$simulator_MainWindow = GUICreate($simulator_programname, 400, 320, $margin_left, $margin_top, $WS_POPUPWINDOW, $WS_EX_MDICHILD, $mainwin) ;$mainwin
+EndIf
+local $helpmenu = GUICtrlCreateMenu("&Help")
+global $simulator_helpitem_about = GUICtrlCreateMenuItem("&About", $helpmenu)
 GUICtrlCreateLabel("Listening on", 10, 13)
-$hIP = GUICtrlCreateEdit($iIP, 72, 10, 80, 20, $ES_READONLY)
-Global $hCopyButton_IP = GUICtrlCreateButton("Copy", 154, 7, 50)
+global $simulator_hIP = GUICtrlCreateEdit($iIP, 72, 10, 80, 20, $ES_READONLY)
+global $simulator_hCopyButton_IP = GUICtrlCreateButton("Copy", 154, 7, 50)
 GUICtrlCreateLabel("Port", 210, 13)
-$hPort = GUICtrlCreateEdit($iPort, 233, 10, 40, 20, $ES_READONLY)
-Global $hCopyButton_Port = GUICtrlCreateButton("Copy", 277, 7, 50)
-Global $hEdit = GUICtrlCreateEdit("", 10, 40, 380, 215, BitOR($ES_READONLY, $WS_VSCROLL))
-Global $hHidden = GUICtrlCreateDummy()
-Global $hCopyButton = GUICtrlCreateButton("Copy", 10, 260, 80, 30)
-Global $hClearButton = GUICtrlCreateButton("Clear", 100, 260, 80, 30)
-Global $hSave = GUICtrlCreateButton("Save As", 190, 260, 80, 30)
+global $simulator_hPort = GUICtrlCreateEdit($iPort, 233, 10, 40, 20, $ES_READONLY)
+global $simulator_hCopyButton_Port = GUICtrlCreateButton("Copy", 277, 7, 50)
+global $simulator_hEdit = GUICtrlCreateEdit("", 10, 40, 380, 215, BitOR($ES_READONLY, $WS_VSCROLL))
+global $simulator_hHidden = GUICtrlCreateDummy()
+global $simulator_hCopyButton = GUICtrlCreateButton("Copy", 10, 260, 80, 30)
+global $simulator_hClearButton = GUICtrlCreateButton("Clear", 100, 260, 80, 30)
+global $simulator_hSave = GUICtrlCreateButton("Save As", 190, 260, 80, 30)
 GUICtrlSetTip(-1, "Save last message")
-Global $hFile = GUICtrlCreateEdit($filename, 275, 265, 100, 20, $ES_WANTRETURN)
-GUISetState(@SW_SHOW)
+global $hFile = GUICtrlCreateEdit($filename, 275, 265, 100, 20, $ES_WANTRETURN)
+GUISetState()
 
-While 1
-    Switch GUIGetMsg()
-        Case $GUI_EVENT_CLOSE
-            ExitLoop
-        Case $hCopyButton_IP
-			copier($hIP)
-        Case $hCopyButton_Port
-			copier($hPort)
-        Case $hCopyButton
-			copier($hEdit)
-		Case $hClearButton
-            GUICtrlSetData($hEdit, "")
-        Case $hSave
-		local $extension = StringSplit(GUICtrlRead($hFile), ".")
-		$extension = $extension[UBound($extension)-1]
-		local $filesave = FileSaveDialog("Save As", @WorkingDir, "All (*.*)|(*." & $extension & ")", 16, GUICtrlRead($hFile), $MainWindow)
-		if not @error then
-			FileWrite(fileopen(GUICtrlRead($hFile), 2), GUICtrlRead($hHidden))
-		EndIf
-		Case $helpitem_about
-			about()
+if $self then
+	While 1
+		simulator_choices(GUIGetMsg(), True)
+	WEnd
+EndIf
+EndFunc
+
+Func simulator_choices($choice, $exit=False)
+    Switch $choice
+		Case $GUI_EVENT_CLOSE
+			if $exit then
+				Exit;Loop
+            Else
+				GUIDelete($simulator_MainWindow)
+			EndIf
+        Case $simulator_hCopyButton_IP
+			simulator_copier($simulator_MainWindow, $simulator_hIP)
+        Case $simulator_hCopyButton_Port
+			simulator_copier($simulator_MainWindow, $simulator_hPort)
+        Case $simulator_hCopyButton
+			simulator_copier($simulator_MainWindow, $simulator_hEdit)
+		Case $simulator_hClearButton
+            GUICtrlSetData($simulator_hEdit, "")
+        Case $simulator_hSave
+			local $extension = StringSplit(GUICtrlRead($hFile), ".")
+			$extension = $extension[UBound($extension)-1]
+			local $filesave = FileSaveDialog("Save As", @WorkingDir, "All (*.*)|(*." & $extension & ")", 16, GUICtrlRead($hFile), $simulator_MainWindow)
+			if not @error then
+				FileWrite(fileopen(GUICtrlRead($hFile), 2), GUICtrlRead($simulator_hHidden))
+			EndIf
+		Case $simulator_helpitem_about
+			simulator_about()
     EndSwitch
-WEnd
+EndFunc
 
-GUIDelete($MainWindow)
-AdlibUnRegister("_Listen")
-
-func copier($field)
+func simulator_copier($mainwin, $field)
 	ClipPut(GUICtrlRead($field))
-	ControlFocus($MainWindow, "", $field)
+	ControlFocus($mainwin, "", $field)
 	GUICtrlSendMsg($field, $EM_SETSEL, 0, -1)
 EndFunc
 
-
-Func _Listen()
-    Local $thesocket=$iListenSocket, $thetext = $hEdit, $msg = $hHidden
+Func _simulator_Listen()
+    Local $thesocket=$simulator_iListenSocket, $thetext = $simulator_hEdit, $msg = $simulator_hHidden, $limit = $simulator_thelimit
 
 	local $iSocket = TCPAccept($thesocket)
     If $iSocket <> -1 Then
@@ -148,12 +170,12 @@ Func _Listen()
 			EndIf
             Sleep(100)
         WEnd
-    EndIf
+	EndIf
 EndFunc
 
-Func SizeToBytes($sSize)
+Func simulator_SizeToBytes($sSize)
     Local $iMultiplier = 1
-    $sSize = StringUpper($sSize)
+	$sSize = StringUpper($sSize)
     If StringRight($sSize, 2) == "KB" Then
         $iMultiplier = 1024
         $sSize = StringTrimRight($sSize, 2)
@@ -164,16 +186,18 @@ Func SizeToBytes($sSize)
     Return Int($sSize) * $iMultiplier
 EndFunc
 
-Func _OnExit()
-    TCPCloseSocket($iListenSocket)
+Func _simulator_OnExit()
+	AdlibUnRegister("_simulator_Listen")
+    TCPCloseSocket($simulator_iListenSocket)
     TCPShutdown()
 EndFunc
 
-Func about()
-  GUICreate("About " & $programname, 435, 410, -1, -1, -1, $WS_EX_MDICHILD, $MainWindow)
-  $localleft=10
-  $localtop=10
-  $message=$programname & " - Version " & $version & @crlf & _
+Func simulator_about()
+  local $programname=$simulator_programname, $programdesc=$simulator_programdesc, $version=$simulator_version, $thedate=$simulator_thedate
+  GUICreate("About " & $programname, 435, 410, -1, -1, -1, $WS_EX_MDICHILD, $simulator_MainWindow)
+  local $localleft=10
+  local $localtop=10
+  local $message=$programname & " - Version " & $version & @crlf & _
   @crlf & _
   $programdesc & "."
   GUICtrlCreateLabel($message, $localleft, $localtop)
@@ -203,7 +227,7 @@ Func about()
 @crlf & @crlf & _
 "* In accordance with item 7c), misrepresentation of the origin of the material must be marked in reasonable ways as different from the original version."
   GUICtrlCreateLabel($message, $localleft, $localtop+85, 420, 280)
-  $okay=GUICtrlCreateButton("OK", $localleft+160, $localtop+365, 100)
+  local $okay=GUICtrlCreateButton("OK", $localleft+160, $localtop+365, 100)
 
   GUISetState(@SW_SHOW)
   While 1
