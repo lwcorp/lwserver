@@ -2,7 +2,7 @@ Small, quick and efficient, if you want to test mail clients, this emulator lets
 
 ## Installation
 1. Run the program.
-1. Set your local mail clients too use SMTP server 127.0.0.1 (aka localhost), which refers to your own computer.
+1. Set your local mail clients to use SMTP server 127.0.0.1 (aka localhost), which refers to your own computer.
     * Optionally set it to use port 25, but it should already be the default.
 
 ## Usage
