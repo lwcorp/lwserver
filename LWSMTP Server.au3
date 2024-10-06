@@ -5,7 +5,7 @@
 #Au3Stripper_Parameters=/PreExpand /StripOnly /RM ;/RenameMinimum
 #AutoIt3Wrapper_Compile_both=y
 #AutoIt3Wrapper_Res_Description=LWSMTP Server Emulator
-#AutoIt3Wrapper_Res_Fileversion=0.2
+#AutoIt3Wrapper_Res_Fileversion=0.3
 #AutoIt3Wrapper_Res_LegalCopyright=Copyright (C) https://lior.weissbrod.com
 
 #cs
@@ -34,12 +34,13 @@ In accordance with item 7c), misrepresentation of the origin of the material mus
 #include <GUIConstantsEx.au3>
 #include <WindowsConstants.au3>
 #include <EditConstants.au3>
+#include <ComboConstants.au3>
 #include <Constants.au3>
 
 global $simulator_programname="LWSMTP Server Emulator"
 global $simulator_programdesc = "An emulator which shows any outgoing SMTP message your local mail clients try to send"
-global $simulator_version="0.2"
-global $simulator_thedate="2023"
+global $simulator_version="0.3"
+global $simulator_thedate=@YEAR
 
 if StringRegExp(@ScriptName, "^LWSMTP Server.*[_\.]") then
 	simulator()
@@ -47,21 +48,12 @@ EndIf
 
 Func simulator($mainwin = Null, $margin_left=default, $margin_top=default)
 
-TCPStartup()
 ;AutoItSetOption("TCPTimeout", 100)
 
-local $iIP = "127.0.0.1"
-local $iPort = 25
-global $simulator_iListenSocket = TCPListen($iIP, $iPort)
+global $simulator_iIP = "127.0.0.1", $simulator_iPort
 global $simulator_thelimit = '1mb'
 local $filename = "message.eml"
 OnAutoItExitRegister("_simulator_OnExit")
-AdlibRegister("_simulator_Listen", 10000)
-
-If $simulator_iListenSocket = -1 Then
-    MsgBox(262144, "", "Error listening on port " & $iPort)
-    Exit
-EndIf
 
 $simulator_thelimit = simulator_SizeToBytes($simulator_thelimit)
 
@@ -69,25 +61,35 @@ global $simulator_MainWindow
 local $self = IsKeyword($mainwin) = $KEYWORD_NULL
 
 if $self then
-	$simulator_MainWindow = GUICreate($simulator_programname, 400, 320)
+	$simulator_MainWindow = GUICreate($simulator_programname, 400, 420)
 else
-	$simulator_MainWindow = GUICreate($simulator_programname, 400, 320, $margin_left, $margin_top, $WS_POPUPWINDOW, $WS_EX_MDICHILD, $mainwin) ;$mainwin
+	$simulator_MainWindow = GUICreate($simulator_programname, 400, 420, $margin_left, $margin_top, $WS_POPUPWINDOW, $WS_EX_MDICHILD, $mainwin)
 EndIf
 local $helpmenu = GUICtrlCreateMenu("&Help")
 global $simulator_helpitem_about = GUICtrlCreateMenuItem("&About", $helpmenu)
-GUICtrlCreateLabel("Listening on", 10, 13)
-global $simulator_hIP = GUICtrlCreateEdit($iIP, 72, 10, 80, 20, $ES_READONLY)
-global $simulator_hCopyButton_IP = GUICtrlCreateButton("Copy", 154, 7, 50)
-GUICtrlCreateLabel("Port", 210, 13)
-global $simulator_hPort = GUICtrlCreateEdit($iPort, 233, 10, 40, 20, $ES_READONLY)
-global $simulator_hCopyButton_Port = GUICtrlCreateButton("Copy", 277, 7, 50)
-global $simulator_hEdit = GUICtrlCreateEdit("", 10, 40, 380, 215, BitOR($ES_READONLY, $WS_VSCROLL))
+GUICtrlCreateLabel("Proxy Type", 10, 10)
+global $simulator_hProxyType = GUICtrlCreateCombo("", 72, 10, 70, 20, BitOr($GUI_SS_DEFAULT_COMBO, $CBS_DROPDOWNLIST))
+GUICtrlSetData(-1, "SMTP", "SMTP")
+GUICtrlCreateLabel("Listening on", 10, 43)
+global $simulator_hIP = GUICtrlCreateInput($simulator_iIP, 72, 40, 80, 20)
+global $simulator_hCopyButton_IP = GUICtrlCreateButton("Copy", 154, 37, 50)
+GUICtrlCreateLabel("Port", 210, 43)
+global $simulator_hPort = GUICtrlCreateCombo("", 233, 40, 50, 20)
+GUICtrlSetData(-1, "25|8080", "25")
+global $simulator_hCopyButton_Port = GUICtrlCreateButton("Copy", 287, 37, 50)
+global $simulator_hEdit = GUICtrlCreateEdit("", 10, 70, 380, 215, BitOR(BitAND($GUI_SS_DEFAULT_EDIT, BitNOT($WS_HSCROLL)), $ES_READONLY))
 global $simulator_hHidden = GUICtrlCreateDummy()
-global $simulator_hCopyButton = GUICtrlCreateButton("Copy", 10, 260, 80, 30)
-global $simulator_hClearButton = GUICtrlCreateButton("Clear", 100, 260, 80, 30)
-global $simulator_hSave = GUICtrlCreateButton("Save As", 190, 260, 80, 30)
+global $simulator_hCopyButton = GUICtrlCreateButton("Copy", 10, 295, 80, 30)
+global $simulator_hClearButton = GUICtrlCreateButton("Clear", 100, 295, 80, 30)
+global $simulator_hSave = GUICtrlCreateButton("Save As", 190, 295, 80, 30)
 GUICtrlSetTip(-1, "Save last message")
-global $hFile = GUICtrlCreateEdit($filename, 275, 265, 100, 20, $ES_WANTRETURN)
+global $hFile = GUICtrlCreateInput($filename, 275, 300, 100, 20)
+global $simulator_hStartButton = GUICtrlCreateButton("Start", 110, 330, 80, 30)
+global $simulator_hStopButton = GUICtrlCreateButton("Stop", 210, 330, 80, 30)
+GUICtrlSetState($simulator_hStopButton, $GUI_DISABLE)
+GUICtrlCreateLabel("Status:", 10, 370)
+global $simulator_hStatus = GUICtrlCreateLabel("Stopped", 70, 370, 250, 20)
+GUICtrlSetColor($simulator_hStatus, eval("COLOR_BLUE"))
 GUISetState()
 
 if $self then
@@ -105,7 +107,17 @@ Func simulator_choices($choice, $exit=False)
             Else
 				GUIDelete($simulator_MainWindow)
 			EndIf
-        Case $simulator_hCopyButton_IP
+        Case $simulator_hProxyType
+			local $porter = 0
+			if GUICtrlRead($simulator_hProxyType) == "SMTP" and GUICtrlRead($simulator_hPort) <> 25 then
+				$porter = 25
+			elseif GUICtrlRead($simulator_hProxyType) == "HTTP/S" and GUICtrlRead($simulator_hPort) <> 8080 then
+				$porter = 8080
+			endif
+			if $porter > 0 then
+				GUICtrlSetData($simulator_hPort, $porter)
+			endif
+		Case $simulator_hCopyButton_IP
 			simulator_copier($simulator_MainWindow, $simulator_hIP)
         Case $simulator_hCopyButton_Port
 			simulator_copier($simulator_MainWindow, $simulator_hPort)
@@ -120,9 +132,41 @@ Func simulator_choices($choice, $exit=False)
 			if not @error then
 				FileWrite(fileopen(GUICtrlRead($hFile), 2), GUICtrlRead($simulator_hHidden))
 			EndIf
+		Case $simulator_hStartButton
+			simulator_start()
+		Case $simulator_hStopButton
+			simulator_stop()
 		Case $simulator_helpitem_about
 			simulator_about()
     EndSwitch
+EndFunc
+
+Func simulator_start()
+    $simulator_iIP = GUICtrlRead($simulator_hIP)
+    $simulator_iPort = GUICtrlRead($simulator_hPort)
+	TCPStartup()
+    global $simulator_iListenSocket = TCPListen($simulator_iIP, $simulator_iPort)
+    If @error Then
+        GUICtrlSetData($simulator_hStatus, "Error starting the server on " & $simulator_iIP & ":" & $simulator_iPort)
+    Else
+		AdlibRegister("_simulator_Listen", 10000)
+		GUICtrlSetData($simulator_hStatus, "Running")
+		GUICtrlSetState($simulator_hStartButton, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hProxyType, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hIP, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hPort, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hStopButton, $GUI_ENABLE)
+    EndIf
+EndFunc
+
+Func simulator_stop()
+	_simulator_OnExit()
+	GUICtrlSetData($simulator_hStatus, "Stopped")
+	GUICtrlSetState($simulator_hStartButton, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hProxyType, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hIP, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hPort, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hStopButton, $GUI_DISABLE)
 EndFunc
 
 func simulator_copier($mainwin, $field)
@@ -188,8 +232,10 @@ EndFunc
 
 Func _simulator_OnExit()
 	AdlibUnRegister("_simulator_Listen")
-    TCPCloseSocket($simulator_iListenSocket)
-    TCPShutdown()
+	If IsDeclared("simulator_iListenSocket") then
+		TCPCloseSocket($simulator_iListenSocket)
+	EndIf
+	TCPShutdown()
 EndFunc
 
 Func simulator_about()
