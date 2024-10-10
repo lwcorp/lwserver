@@ -1,4 +1,4 @@
-Small, quick, efficient and multipurpose:
+A small, quick and efficient multipurpose server, which your can enable and disable instantly:
 - A HTTP/S proxy server that allows websites or other users to use your PC as a middleman (which can bypass websites that block their own IP addresses)
 - A SMTP emulator that allows tesing mail clients by making them think your PC is a mail server
 
