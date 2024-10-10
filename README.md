@@ -13,4 +13,5 @@ Small, quick and efficient, if you want to test mail clients, this emulator lets
 Windows 200X, Windows XP, Windows Vista, Windows 7-11
 
 ### Screenshots
-![image](https://user-images.githubusercontent.com/1773306/233868982-ac527dc1-084e-4b6a-8cba-57adf9d89aa4.png)
+![image](https://github.com/user-attachments/assets/fc9cf92c-dee7-422d-9f00-12d947aaf8d5)
+![image](https://github.com/user-attachments/assets/5a6f1469-9fdd-4f46-8201-d75d13488d39)
