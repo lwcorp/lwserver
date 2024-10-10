@@ -1,13 +1,17 @@
 Small, quick and efficient, if you want to test mail clients, this emulator lets you trick them into thinking your computer.
 
 ## Installation
-1. Run the program.
-1. Set your local mail clients to use SMTP server 127.0.0.1 (aka localhost), which refers to your own computer.
-    * Optionally set it to use port 25, but it should already be the default.
+None.
 
 ## Usage
-1. Send a message from local mail clients (like https://github.com/lwcorp/lwblat).
+Just run the program, choose your usage and click Start.
+### SMTP
+To get SMTP messages:
+1. Send a message from local mail clients (like https://github.com/lwcorp/lwblat) to SMTP server 127.0.0.1 (which is your own computer).
 1. The program will show the message and make the mailer think the message was actually sent.
+### HTTP/S
+To let a website or someone else's browser enter sites through you as a middleman:
+* Define your website or someone else's browser to use your external IP as proxy (the program will show you which IP to use).
 
 ### System Requirements
 Windows 200X, Windows XP, Windows Vista, Windows 7-11
