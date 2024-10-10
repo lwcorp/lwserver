@@ -5,13 +5,13 @@ None.
 
 ## Usage
 Just run the program, choose your usage and click Start.
+### HTTP/S
+To let a website or someone else's browser enter sites through you as a middleman:
+* Define your website or someone else's browser to use your external IP as proxy (the program will show you which IP to use).
 ### SMTP
 To get SMTP messages:
 1. Send a message from local mail clients (like https://github.com/lwcorp/lwblat) to SMTP server 127.0.0.1 (which is your own computer).
 1. The program will show the message and make the mailer think the message was actually sent.
-### HTTP/S
-To let a website or someone else's browser enter sites through you as a middleman:
-* Define your website or someone else's browser to use your external IP as proxy (the program will show you which IP to use).
 
 ### System Requirements
 Windows 200X, Windows XP, Windows Vista, Windows 7-11
