@@ -1,6 +1,6 @@
 A small, quick and efficient multipurpose server, which your can enable and disable instantly:
 - A HTTP/S proxy server that allows websites or other users to use your PC as a middleman (which can bypass websites that block their own IP addresses)
-- A SMTP server/emulator that allows tesing mail clients by letting them use your PC as a mail server, thus displaying the messages and optionally even send them away
+- A SMTP server/emulator that allows testing mail clients by letting them use your PC as a mail server, thus displaying the messages and optionally even send them away
 
 ## Installation
 None.
