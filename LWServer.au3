@@ -5,7 +5,7 @@
 #Au3Stripper_Parameters=/PreExpand /StripOnly /RM ;/RenameMinimum
 #AutoIt3Wrapper_Compile_both=y
 #AutoIt3Wrapper_Res_Description=LWServer
-#AutoIt3Wrapper_Res_Fileversion=1.0
+#AutoIt3Wrapper_Res_Fileversion=1.1
 #AutoIt3Wrapper_Res_LegalCopyright=Copyright (C) https://lior.weissbrod.com
 
 #cs
@@ -38,11 +38,12 @@ In accordance with item 7c), misrepresentation of the origin of the material mus
 #include <Constants.au3>
 #include <WinAPIError.au3> ; for http/s
 #include <Inet.au3> ; for _TCPIpToName
+#include <Array.au3> ; for MX records
 
 global $simulator_programname="LWServer"
-global $simulator_programdesc = "Both a http/s proxy server and mail emulator accepting outgoing SMTP messages." & @crlf & _
+global $simulator_programdesc = "Both a http/s proxy and SMTP server/emulator for sending incoming messages outside." & @crlf & _
 "The proxy server allows others to use your device as VPN"
-global $simulator_version="1.0"
+global $simulator_version="1.1"
 global $simulator_thedate=@YEAR
 
 if StringRegExp(@ScriptName, "^" & $simulator_programname & ".*[_\.]") then
@@ -53,7 +54,7 @@ Func simulator($mainwin = Null, $margin_left=default, $margin_top=default, $defa
 
 ;AutoItSetOption("TCPTimeout", 100)
 
-global $simulator_iIP, $simulator_iPort, $simulator_iPortType, $simulator_iProxyType
+global $simulator_iIP, $simulator_iPort, $simulator_iPortType, $simulator_iProxyType, $simulator_iEmulate, $simulator_iLog
 global $simulator_thelimit = '1mb'
 local $filename = "output.log"
 OnAutoItExitRegister("_simulator_OnExit")
@@ -94,15 +95,23 @@ global $simulator_hClearButton = GUICtrlCreateButton("Clear", 100, 295, 80, 30)
 global $simulator_hSave = GUICtrlCreateButton("Save As", 190, 295, 80, 30)
 GUICtrlSetTip(-1, "Save last message")
 global $hFile = GUICtrlCreateInput($filename, 275, 300, 100, 20)
+global $simulator_hEmulate = GUICtrlCreateCheckbox("Just emulate", 10, 327)
+GUICtrlSetState(-1, $GUI_CHECKED)
+GUICtrlSetTip(-1, "Uncheck to actually try re-routing incoming mail to the real destination")
+GUICtrlSetState(-1, $GUI_HIDE)
+global $simulator_hLog = GUICtrlCreateCheckbox("Log", 10, 344)
+GUICtrlSetState(-1, $GUI_HIDE)
 global $simulator_hStartButton = GUICtrlCreateButton("Start", 110, 330, 80, 30)
 global $simulator_hStopButton = GUICtrlCreateButton("Stop", 210, 330, 80, 30)
 GUICtrlSetState($simulator_hStopButton, $GUI_DISABLE)
-GUICtrlCreateLabel("Status:", 10, 370)
-global $simulator_hStatus = GUICtrlCreateLabel("Stopped", 70, 370, 250, 20)
+GUICtrlCreateLabel("Status:", 10, 363)
+global $simulator_hCopyButton_Status = GUICtrlCreateButton("Copy", 10, 376, 34, 19)
+global $simulator_hStatus = GUICtrlCreateEdit("Stopped", 70, 363, 300, 46, BitOR(BitAND($GUI_SS_DEFAULT_EDIT, BitNOT($WS_HSCROLL), bitnot($ES_AUTOHSCROLL), bitnot($WS_VSCROLL), bitnot($ES_AUTOVSCROLL)), $ES_READONLY, $WS_TABSTOP), $WS_EX_TRANSPARENT)
 GUICtrlSetColor($simulator_hStatus, eval("COLOR_BLUE"))
-GUICtrlCreateLabel("Public IP:", 8, 395)
-global $simulator_hExternalIP = GUICtrlCreateInput("Checked on Start", 10, 410, 90, default, BitOR($GUI_SS_DEFAULT_INPUT, $ES_READONLY, $WS_TABSTOP))
-global $simulator_hCopyButton_ExternalIP = GUICtrlCreateButton("Copy", 103, 407, 50)
+global $simulator_hStatus_changed = false
+GUICtrlCreateLabel("Public IP:", 8, 396)
+global $simulator_hExternalIP = GUICtrlCreateInput("Checked on Start", 10, 411, 90, default, BitOR($GUI_SS_DEFAULT_INPUT, $ES_READONLY, $WS_TABSTOP))
+global $simulator_hCopyButton_ExternalIP = GUICtrlCreateButton("Copy", 103, 408, 50)
 GUISetState()
 
 simulator_choices($simulator_hUsage)
@@ -150,6 +159,16 @@ Func simulator_choices($choice, $exit=False)
 			if $output_file <> "" Then
 				GUICtrlSetData($hFile, $output_file)
 			EndIf
+			If BitAND(GUICtrlGetState($simulator_hEmulate), $GUI_SHOW) == $GUI_SHOW Then
+				GUICtrlSetState($simulator_hEmulate, $GUI_HIDE)
+			else
+				GUICtrlSetState($simulator_hEmulate, $GUI_SHOW)
+			endif
+			If BitAND(GUICtrlGetState($simulator_hLog), $GUI_SHOW) == $GUI_SHOW Then
+				GUICtrlSetState($simulator_hLog, $GUI_HIDE)
+			else
+				GUICtrlSetState($simulator_hLog, $GUI_SHOW)
+			endif
 		Case $simulator_hUsage
 			local $use_ip
 			if GUICtrlRead($simulator_hUsage) <> "Internal" then
@@ -166,6 +185,8 @@ Func simulator_choices($choice, $exit=False)
 			simulator_copier($simulator_MainWindow, $simulator_hPort)
         Case $simulator_hCopyButton
 			simulator_copier($simulator_MainWindow, $simulator_hEdit)
+		Case $simulator_hCopyButton_Status
+			simulator_copier($simulator_MainWindow, $simulator_hStatus)
 		Case $simulator_hCopyButton_ExternalIP
 			simulator_copier($simulator_MainWindow, $simulator_hExternalIP)
 		Case $simulator_hClearButton
@@ -220,6 +241,18 @@ Func simulator_start()
     $simulator_iPort = GUICtrlRead($simulator_hPort)
 	$simulator_iPortType = GUICtrlRead($simulator_hPortType)
 	$simulator_iProxyType = GUICtrlRead($simulator_hProxyType)
+	$simulator_iEmulate = $simulator_hEmulate
+	$simulator_iLog = $simulator_hLog
+	If BitAND(GUICtrlGetState($simulator_iEmulate), $GUI_SHOW) == $GUI_SHOW and GUICtrlRead($simulator_iEmulate) == $GUI_CHECKED Then
+		$simulator_iEmulate = true
+	else
+		$simulator_iEmulate = false
+	EndIf
+	If BitAND(GUICtrlGetState($simulator_iLog), $GUI_SHOW) == $GUI_SHOW and GUICtrlRead($simulator_iLog) == $GUI_CHECKED Then
+		$simulator_iLog = true
+	else
+		$simulator_iLog = false
+	EndIf
 	if GUICtrlRead($simulator_hUsage) == "LAN+Router" then
 		local $router_chosen
 		if routerport($simulator_iPort, $simulator_iPortType, $simulator_iProxyType, $simulator_iIP) then
@@ -251,6 +284,8 @@ Func simulator_start()
 		GUICtrlSetState($simulator_hPortType, $GUI_DISABLE)
 		GUICtrlSetState($simulator_hIP, $GUI_DISABLE)
 		GUICtrlSetState($simulator_hPort, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hEmulate, $GUI_DISABLE)
+		GUICtrlSetState($simulator_hLog, $GUI_DISABLE)
 		GUICtrlSetState($simulator_hStopButton, $GUI_ENABLE)
     EndIf
 EndFunc
@@ -265,6 +300,8 @@ Func simulator_stop()
 	GUICtrlSetState($simulator_hPortType, $GUI_ENABLE)
 	GUICtrlSetState($simulator_hIP, $GUI_ENABLE)
 	GUICtrlSetState($simulator_hPort, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hEmulate, $GUI_ENABLE)
+	GUICtrlSetState($simulator_hLog, $GUI_ENABLE)
 	GUICtrlSetState($simulator_hStopButton, $GUI_DISABLE)
 EndFunc
 
@@ -285,31 +322,95 @@ Func _simulator_Listen()
 	If ($simulator_iPortType == "TCP" and $iSocket <> -1) or $simulator_iPortType <> "TCP" then
 		if GUICtrlRead($simulator_hProxyType) == "SMTP" then
 			TCPorUDPSend($iSocket, "220 Service ready" & @CRLF)
+			Local $sFromAddress, $sToAddress, $aBody
 			While 1
 				$sReceived = TCPorUDPRecv($iSocket, $limit)
 				if $simulator_iPortType <> "TCP" and $sReceived == ("220 Service ready" & @CRLF) Then
 					$sReceived = ""
 				endif
 				If $sReceived <> "" Then
-					_Monitor("Received: " & $sReceived, false)
-					StringReplace($sReceived, @CRLF, "")
+					_Monitor("Received: " & $sReceived)
+					StringReplace($sReceived, @CRLF, ""); Returns the number of replacements performed stored in the @extended macro.
 					if @extended>1 then
-						GUICtrlSetData($msg, $sReceived)
+						GUICtrlSetData($msg, StringRegExpReplace(StringTrimRight($sReceived, stringlen(@CRLF & "." & @CRLF)), "(?m)^\.{2}", "."))
 					EndIf
 					If StringInStr($sReceived, "EHLO") Then
 						TCPorUDPSend($iSocket, "250-Hello" & @CRLF)
 						TCPorUDPSend($iSocket, "250-8BITMIME" & @CRLF)
 						TCPorUDPSend($iSocket, "250 SIZE" & @CRLF)
 					ElseIf StringInStr($sReceived, "MAIL FROM") Then
+						$sFromAddress = StringRegExp($sReceived, "<(.*?)>", 1)[0]
 						TCPorUDPSend($iSocket, "250 Sender OK" & @CRLF)
 					ElseIf StringInStr($sReceived, "RCPT TO") Then
+						$sToAddress = StringRegExp($sReceived, "<(.*?)>", 1)[0]
 						TCPorUDPSend($iSocket, "250 Recipient OK" & @CRLF)
 					ElseIf StringInStr($sReceived, "DATA") Then
 						TCPorUDPSend($iSocket, "354 Start mail input; end with <CRLF>.<CRLF>" & @CRLF)
 					ElseIf StringInStr($sReceived, @CRLF & "." & @CRLF) Then
+						$aBody = $sReceived
 						TCPorUDPSend($iSocket, "250 Message accepted for delivery" & @CRLF)
 					ElseIf StringInStr($sReceived, "QUIT") Then
 						TCPorUDPSend($iSocket, "221 Bye" & @CRLF)
+						local $sRecipientDomain, $DNSRecords, $DNSRecord, $smtpSocket, $response, $bMailSent, $bMailSent = false, $failed = ""
+						if $sFromAddress = "" then
+							$failed = "empty From Address"
+						else
+							if $sToAddress = "" then
+								$failed = "empty To Address"
+							else
+								$sRecipientDomain = StringSplit($sToAddress, "@", 2)[1]
+								if $sRecipientDomain = "" then
+									$failed = "empty server in " & $sToAddress
+								EndIf
+							EndIf
+						endif
+						if $failed <> "" then
+							_UpdateStatus(($simulator_iEmulate ? "W" : "C") & "ouldn't send message due to " & $failed)
+						else
+							$DNSRecords = DNSRecords($sRecipientDomain)
+							if not IsArray($DNSRecords) Then
+								_UpdateStatus(($simulator_iEmulate ? "W" : "C") & "ouldn't send message because " & $sRecipientDomain & " has neither MX nor A records")
+								ExitLoop
+							endif
+							For $i = 1 To $DNSRecords[0][0]
+								$DNSRecord = $DNSRecords[$i][0]
+								if $simulator_iEmulate then
+									_UpdateStatus("Would have tried to send the message to" & @CRLF & $DNSRecord)
+									$bMailSent = true
+									ExitLoop
+								EndIf
+								$smtpSocket = TCPConnect($DNSRecords[0][1] == "A" ? $DNSRecord : TCPNameToIP($DNSRecord), 25)
+								If @error Then
+									if $simulator_iLog then
+										_Monitor("Failed to connect to MX server " & $DNSRecord & " with error " & @error & " " & _WinAPI_GetErrorMessage(@error))
+									EndIf
+									ContinueLoop
+								EndIf
+								_UpdateStatus(sendStatus($smtpSocket, $limit, $DNSRecord))
+								sendStatus($smtpSocket, $limit, $DNSRecord, "EHLO " & @ComputerName)
+								sendStatus($smtpSocket, $limit, $DNSRecord, "MAIL FROM:<" & $sFromAddress & ">")
+								sendStatus($smtpSocket, $limit, $DNSRecord, "RCPT TO:<" & $sToAddress & ">")
+								sendStatus($smtpSocket, $limit, $DNSRecord, "DATA")
+								$response = sendStatus($smtpSocket, $limit, $DNSRecord, $aBody)
+								If StringInStr($response, "250") Then
+									$bMailSent = True
+								EndIf
+								$response = sendStatus($smtpSocket, $limit, $DNSRecord, "QUIT")
+								TCPCloseSocket($smtpSocket)
+								If StringInStr($response, "550") Then
+									$bMailSent = False
+									$failed = $response
+									ExitLoop
+								EndIf
+								If $bMailSent Then
+									_UpdateStatus("Message sent succesfully to " & $DNSRecord)
+									ExitLoop
+								EndIf
+							next
+							If not $bMailSent Then
+								_UpdateStatus(($failed == "") ? ("Message failed to get sent to " & $DNSRecord) : $failed)
+							EndIf
+						EndIf
 						ExitLoop
 					Elseif $simulator_iPortType == "TCP" then
 						TCPorUDPSend($iSocket, "500 Syntax error" & @CRLF)
@@ -351,6 +452,21 @@ Func _simulator_Listen()
 			EndIf
 		EndIf
 	EndIf
+EndFunc
+
+func sendStatus($smtpSocket, $limit, $sMxServer, $str = "")
+	local $log = $simulator_iLog
+	if $str == "" then
+		if $log Then _Monitor("Connected to MX Server " & $sMxServer)
+	else
+		TCPSend($smtpSocket, $str & @CRLF)
+		if $log Then _Monitor("Sent: " & $str)
+	EndIf
+	local $response = TCPRecv($smtpSocket, $limit)
+	if $log then
+		_Monitor("Received: " & $response)
+	endif
+	return $response
 EndFunc
 
 Func _ProcessRequest($iClientSocket, $sRequest)
@@ -544,6 +660,13 @@ Func _CloseConnection($which, $iSocket, $sReason)
 EndFunc
 
 Func _UpdateStatus($sText)
+	if StringLen($sText) > 100 then
+		$simulator_hStatus_changed = true
+		GUICtrlSetFont($simulator_hStatus, 6.75)
+	elseif $simulator_hStatus_changed then
+		$simulator_hStatus_changed = false
+		GUICtrlSetFont($simulator_hStatus, Default)
+	endif
     GUICtrlSetData($simulator_hStatus, $sText)
 EndFunc
 
@@ -561,12 +684,314 @@ Func simulator_SizeToBytes($sSize)
 EndFunc
 
 func TCPorUDPSend($iSocket, $msg)
-	return ($simulator_iPortType == "TCP") ? TCPSend($iSocket, $msg) : UDPSend($iSocket, $msg)
+	local $output
+	$output = ($simulator_iPortType == "TCP") ? TCPSend($iSocket, $msg) : UDPSend($iSocket, $msg)
+	if $simulator_iLog Then
+		_Monitor("Sent: " & $msg)
+	EndIf
+	return $output
 EndFunc
 
 func TCPorUDPRecv($iSocket, $limit)
 	return ($simulator_iPortType == "TCP") ? TCPRecv($iSocket, $limit) : UDPRecv($iSocket, $limit)
 EndFunc
+
+Func DNSRecords($domain, $DNSRecord = "MX-A-AAAA") ; Can be MX, A or SRV but also X-Z, X-Y-Z, etc. (X record, but if fails try Y instead)
+    Local $DNSRecords = StringSplit($DNSRecord, "-"), $binary_data
+	Local $loc_serv = _GetGateway(), $loc_serv_final = ""
+	If IsArray($loc_serv) Then
+		if StringSplit($loc_serv[1], ".", 2)[0] <> "192" Then ; this kind of server is not what we want
+			$loc_serv_final = $loc_serv[1]
+		EndIf
+	EndIf
+	UDPStartup()
+	for $i = 1 to $DNSRecords[0]
+		$DNSRecord = $DNSRecords[$i]
+		$binary_data = DNSQueryServer($domain, $DNSRecord, $loc_serv_final)
+		if $binary_data <> -1 Then
+			ExitLoop
+		EndIf
+	Next
+	UDPShutdown()
+	If $binary_data == -1 then
+		Return -1
+	EndIf
+
+    Local $output
+	switch $DNSRecord
+		case "MX"
+			$output = ExtractMXServerData($binary_data)
+		case "A"
+			$output = _DNS_ExtractAData($binary_data, $DNSRecord)
+		case "AAAA"
+			$output = _DNS_ExtractAData($binary_data, $DNSRecord)
+		case "SRV"
+			$output = ExtractSRVServerData($binary_data)
+		case Else
+			Return -1
+	EndSwitch
+    If @error Then Return -1
+    if IsArray($output) then
+		local $lastCol = ubound($output, 2)-1
+		if $output[1][$lastCol] <> "" then
+			_ArraySort($output, default, 1, default, $lastCol - ($DNSRecord == "SRV" ? 1 : 0))
+			if $DNSRecord == "SRV" then
+				Local $iStart = -1
+				For $iX = 1 To $output[0][0]
+					If $output[$iX][$lastCol-1] = $output[$iX - 1][$lastCol-1] And $iStart = -1 Then
+						$iStart = $iX - 1
+					ElseIf $output[$iX][$lastCol-1] <> $output[$iX - 1][$lastCol-1] And $iStart <> -1 Then
+						_ArraySort($output, 1, $iStart, $iX - 1, $lastCol)
+						$iStart = -1
+					EndIf
+				Next
+				If $iStart <> -1 Then
+					_ArraySort($output, 1, $iStart, $iX - 1, $lastCol)
+				EndIf
+			EndIf
+		EndIf
+	EndIf
+
+    Return $output
+EndFunc   ;==>DNSRecords
+
+Func DNSQueryServer($domain, $DNSRecord, $loc_serv)
+    Local $domain_array
+    $domain_array = StringSplit($domain, ".", 1)
+
+    Local $binarydom
+    For $el = 1 To $domain_array[0]
+        $binarydom &= Hex(BinaryLen($domain_array[$el]), 2) & Hex(Binary($domain_array[$el]))
+    Next
+    $binarydom_suffix = "00" ; for example, 'gmail.com' will be '05676D61696C03636F6D00' and 'autoit.com' will be '066175746F697403636F6D00'
+
+    Local $identifier = Hex(Random(0, 1000, 1), 2) ; random hex number serving as a handle for the data that will be received
+    Local $server_bin = "0x00" & $identifier & "01000001000000000000" & $binarydom & $binarydom_suffix ; this is our query
+	switch $DNSRecord
+		case "MX"
+			$server_bin &= "000F0001"
+		case "A"
+			$server_bin &= "00010001"
+		case "AAAA"
+			$server_bin &= "001C0001"
+		case "SRV"
+			$server_bin &= "00210001"
+		case else
+			Return -1
+	EndSwitch
+    Local $num_time, $data
+
+    For $num_time = 1 To 10
+        Local $query_server ; ten(10) DNS servers, we'll start with one that is our's default, if no response or local one switch to public free servers
+        Switch $num_time
+			Case 1
+				$query_server = $loc_serv
+            Case 2
+                $query_server = "4.2.2.1"
+            Case 3
+                $query_server = "67.138.54.100"
+            Case 4
+                $query_server = "208.67.222.222"
+            Case 5
+                $query_server = "4.2.2.2"
+            Case 6
+                $query_server = "4.2.2.3"
+            Case 7
+                $query_server = "208.67.220.220"
+            Case 8
+                $query_server = "4.2.2.4"
+            Case 9
+                $query_server = "4.2.2.5"
+            Case 10
+                $query_server = "4.2.2.6"
+        EndSwitch
+
+        If $query_server <> "" Then
+            Local $sock
+            $sock = UDPOpen($query_server, 53)
+            If @error Or $sock = -1 Then ; ok, that happens
+                UDPCloseSocket($sock)
+                ContinueLoop ; change server and try again
+            EndIf
+
+            UDPSend($sock, $server_bin) ; sending query
+
+            Local $tik = 0
+            Do
+                $data = UDPRecv($sock, 512)
+                $tik += 1
+                Sleep(100)
+            Until $data <> "" Or $tik = 8 ; waiting reasonable time for the response
+
+            If $data And Hex(BinaryMid($data, 2, 1)) = $identifier Then
+                Return $data ; if there is data for us, return
+            EndIf
+        EndIf
+    Next
+
+    Return -1
+EndFunc   ;==>DNSQueryServer
+
+Func ExtractMXServerData($binary_data)
+    Local $num_answ = Dec(StringMid($binary_data, 15, 4)) ; representing number of answers provided by the server
+    Local $arr = StringSplit($binary_data, "C00C000F0001", 1) ; splitting input; "C00C000F0001" - translated to human: "this is the answer for your MX query"
+
+    If $num_answ <> $arr[0] - 1 Or $num_answ = 0 Then Return -1 ; dealing with possible options
+
+    Local $pref[$arr[0]] ; preference number(s)
+    Local $server[$arr[0]] ; server name(s)
+    Local $output[1][2] = [[$arr[0] - 1, "MX"]]
+    ; this goes out containing both server names and coresponding preference numbers
+
+    Local $offset = 10 ; initial offset
+
+    For $i = 2 To $arr[0]
+        $arr[$i] = "0x" & $arr[$i] ; well, it is binary data
+        $pref[$i - 1] = Dec(StringRight(BinaryMid($arr[$i], 7, 2), 4))
+        $offset += BinaryLen($arr[$i - 1]) + 6 ; adding length of every past part plus length of that "C00C000F0001" used for splitting
+        Local $array = ReadBinary($binary_data, $offset) ; extraction of server names starts here
+        While $array[1] = 192 ; dealing with special case
+            $array = ReadBinary($binary_data, $array[6] + 2)
+        WEnd
+
+        $server[$i - 1] &= $array[2] & "."
+        While $array[3] <> 0 ; the end will obviously be at $array[3] = 0
+            If $array[3] = 192 Then
+                $array = ReadBinary($array[0], $array[4] + 2)
+                If $array[3] = 0 Then
+                    $server[$i - 1] &= $array[2]
+                    ExitLoop
+                Else
+                    $server[$i - 1] &= $array[2] & "."
+                EndIf
+            Else
+                $array = ReadBinary($array[0], $array[5])
+                If $array[3] = 0 Then
+                    $server[$i - 1] &= $array[2]
+                    ExitLoop
+                Else
+                    $server[$i - 1] &= $array[2] & "."
+                EndIf
+            EndIf
+        WEnd
+        _ArrayAdd($output, $server[$i - 1])
+        $output[ubound($output)-1][1] = $pref[$i - 1]
+    Next
+
+    Return $output ; two-dimensional array
+EndFunc   ;==>ExtractMXServerData
+
+Func _DNS_ExtractAData($bBinary, $DNSRecord)
+    Local $aAnswers = StringSplit($bBinary, "C00C" & (($DNSRecord == "A") ? "0001" : "001C") & "0001", 1)
+    If UBound($aAnswers) > 1 Then
+		Local $ipLen = ($DNSRecord == "A") ? 4 : 16
+        Local $bData = BinaryMid($bBinary, 6 + BinaryLen($aAnswers[1]) + 6)
+        Local $tARaw = DllStructCreate("byte[" & BinaryLen($bData) & "]")
+        DllStructSetData($tARaw, 1, $bData)
+        Local $tAData = DllStructCreate("byte DataLength; byte IP[" & $ipLen & "];", DllStructGetPtr($tARaw))
+		Local $ip[0]
+        For $i = 1 To $ipLen Step ($DNSRecord == "A") ? 1 : 2
+			_ArrayAdd($ip, ($DNSRecord == "A") ? DllStructGetData($tAData, "IP", $i) : Hex(DllStructGetData($tAData, "IP", $i) * 256 + DllStructGetData($tAData, "IP", $i + 1), 4))
+		Next
+		$ip = ($DNSRecord == "A") ? _ArrayToString($ip, ".") : CompressIPv6(_ArrayToString($ip, ":"))
+		Local $output[2][2] = [[1, $DNSRecord], [$ip]]
+		Return $output
+    EndIf
+    Return SetError(1, 0, "")
+EndFunc   ;==>_DNS_ExtractAData
+
+Func CompressIPv6($ip)
+    ; Step 1: Remove leading zeros in each segment; replace '0000' with '0' if necessary
+    Local $output = ""
+    Local $segments = StringSplit($ip, ":", 2)
+    For $i = 0 To UBound($segments) - 1
+        $output &= ($i > 0 ? ":" : "") & (StringRegExpReplace($segments[$i], "\b0+", "") ? StringRegExpReplace($segments[$i], "\b0+", "") : "0")
+    Next
+
+    ; Step 2: Find all occurrences of continuous '0' segments
+    Local $zeros = StringRegExp($output, "\b:?(?:0+:?){2,}", 3)
+    Local $max = ""
+
+    ; Step 3: Identify the longest occurrence of consecutive '0' segments
+    For $i = 0 To UBound($zeros) - 1
+        If StringReplace($zeros[$i], ":", "") > StringReplace($max, ":", "") Then
+            $max = $zeros[$i]
+        EndIf
+    Next
+
+    ; Step 4: Replace the longest sequence of '0' segments with '::' if found
+    If $max <> "" Then $output = StringReplace($output, $max, "::", 1)
+
+    ; Step 5: Return the compressed IPv6 address
+    Return StringLower($output)
+EndFunc
+
+Func ExtractSRVServerData($binary_data)
+    Local $num_answ = Dec(StringMid($binary_data, 15, 4)) ; representing number of answers provided by the server
+    Local $arr = StringSplit($binary_data, "C00C00210001", 1) ; splitting input; "C00C000F0001" - translated to human: "this is the answer for your MX query"
+
+    If $num_answ <> $arr[0] - 1 Or $num_answ = 0 Then Return -1 ; dealing with possible options
+
+    Local $iPriority[$arr[0]]
+    Local $iWeight[$arr[0]]
+    Local $iPort[$arr[0]]
+    Local $sTarget[$arr[0]] ; server name(s)
+    ;Local $output[$arr[0] - 1][4] ; this goes out containing both server names and coresponding priority/weight and port numbers
+	Local $output[1][4] = [[$arr[0]-1, "SRV"]] ; this goes out containing both server names and coresponding priority/weight and port numbers
+    Local $offset = 14 ; initial offset
+
+    For $i = 2 To $arr[0]
+
+        $arr[$i] = "0x" & $arr[$i] ; well, it is binary data
+        $iPriority[$i - 1] = Dec(StringRight(BinaryMid($arr[$i], 7, 2), 4))
+        $iWeight[$i - 1] = Dec(StringRight(BinaryMid($arr[$i], 9, 2), 4))
+        $iPort[$i - 1] = Dec(StringRight(BinaryMid($arr[$i], 11, 2), 4))
+        $offset += BinaryLen($arr[$i - 1]) + 6 ; adding lenght of every past part plus lenght of that "C00C000F0001" used for splitting
+        Local $array = ReadBinary($binary_data, $offset) ; extraction of server names starts here
+        While $array[1] = 192 ; dealing with special case
+            $array = ReadBinary($binary_data, $array[6] + 2)
+        WEnd
+        $sTarget[$i - 1] &= $array[2] & "."
+
+        While $array[3] <> 0 ; the end will obviously be at $array[3] = 0
+            If $array[3] = 192 Then
+                $array = ReadBinary($array[0], $array[4] + 2)
+                If $array[3] = 0 Then
+                    $sTarget[$i - 1] &= $array[2]
+                    ExitLoop
+                Else
+                    $sTarget[$i - 1] &= $array[2] & "."
+                EndIf
+            Else
+                $array = ReadBinary($array[0], $array[5])
+                If $array[3] = 0 Then
+                    $sTarget[$i - 1] &= $array[2]
+                    ExitLoop
+                Else
+                    $sTarget[$i - 1] &= $array[2] & "."
+                EndIf
+
+            EndIf
+        WEnd
+
+		local $result[][] = [[$sTarget[$i - 1], $iPort[$i - 1], $iPriority[$i - 1], $iWeight[$i - 1]]]
+		_ArrayAdd($output, $result)
+    Next
+
+    Return $output ; two-dimensional array
+EndFunc   ;==>ExtractSRVServerData
+
+Func ReadBinary($binary_data, $offset)
+    Local $len = Dec(StringRight(BinaryMid($binary_data, $offset - 1, 1), 2))
+    Local $data_bin = BinaryMid($binary_data, $offset, $len)
+    Local $checker = Dec(StringRight(BinaryMid($data_bin, 1, 1), 2))
+    Local $data = BinaryToString($data_bin)
+    Local $triger = Dec(StringRight(BinaryMid($binary_data, $offset + $len, 1), 2))
+    Local $new_offset = Dec(StringRight(BinaryMid($binary_data, $offset + $len + 1, 1), 2))
+    Local $another_offset = $offset + $len + 1
+    Local $array[7] = [$binary_data, $len, $data, $triger, $new_offset, $another_offset, $checker] ; bit of this and bit of that
+    Return $array
+EndFunc   ;==>ReadBinary
 
 Func _GetGateway()
 	; Based on:
@@ -593,7 +1018,7 @@ Func _GetGateway()
 			endif
         Next
     Else
-        SetError(-1, "No WMI Objects Found for class: Win32_NetworkAdapterConfiguration", "")
+        Return SetError(-1, 0, "No WMI Objects Found for class: Win32_NetworkAdapterConfiguration")
     EndIf
     Return $output
 EndFunc
